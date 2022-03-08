@@ -33,12 +33,9 @@ function getKey() {
     return str2.substring(9, 25);
 }
 
-async function GetCustSubscribeDateAll() {
-    logger.info("GetCustSubscribeDateAll");
-    // 构造url
-    const url = URL.getSubscribeTime + `&pid=${cg.pid}&id=${cg.id}&scdate=${cg.scdate}`
-    logger.info(url)
-    let res = ""
+// get template
+async function getRequest(url) {
+    let res = "";
     try {
         // get 请求
         res = await got.get(url,
@@ -54,32 +51,40 @@ async function GetCustSubscribeDateAll() {
     }
         // 捕获错误
     catch (e) {
-        logger.error(e);
+        logger.error(e.message);
         process.exit(-1);
     }
-    logger.info(res.body)
-    // 如果还未开始
+    return res;
+}
+
+
+// 获取所有可接种日期的list
+async function GetCustSubscribeDateAll(pid, id, month) {
+    logger.info("GetCustSubscribeDateAll(" + `${pid}, ${id}, ${month})`);
+    const url = URL.getSubscribeMonth_news + `&pid=${pid}&id=${id}&month=${month}`;
+    logger.info(url);
+    let res = await getRequest(url);
+    let res_json = JSON.parse(res.body);
+    let list = res_json["list"];
+    logger.info(JSON.stringify(list));
+    return list;
+}
+
+// 获取某个日期的详细加密密文
+async function GetCustSubscribeDateDetail(scdate) {
+    logger.info("GetCustSubscribeDateAll");
+    // 构造url
+    const url = URL.getSubscribeTime + `&pid=${cg.pid}&id=${cg.id}&scdate=${scdate}`
+    logger.info(url)
+    // get 请求
+    let res = await getRequest(url);
+    logger.info(res.body);
+    // 如果还未开始，则一直循环
     while (res.body.indexOf("list") !== -1) {
+        // 延迟0.5s
         sleep(500);
-        try {
-            // get 请求
-            res = await got.get(url,
-                {
-                    headers: {
-                        "Cookie": cg.cookie,
-                        "User-Agent": cg.agent,
-                        "zftsl": getZTF(),
-                        "Referer": "https://servicewechat.com/wx2c7f0f3c30d99445/92/page-frame.html",
-                    }
-                }
-            );
-        }
-            // 捕获错误
-        catch (e) {
-            logger.error(e);
-            process.exit(-1);
-        }
-        logger.info(res.body)
+        res = await getRequest(url);
+        logger.info(res.body);
     }
     //while end
 
@@ -89,10 +94,8 @@ async function GetCustSubscribeDateAll() {
         logger.error(res.body);
         process.exit(-1);
     }
-
-    logger.info(getKey(), "\n");
-
-
+    
+    // decode
     var a, i, c, d;
     var u = r.enc.Utf8.parse("1234567890000000");
 
@@ -105,7 +108,15 @@ async function GetCustSubscribeDateAll() {
         padding: r.pad.Pkcs7
     }).toString(r.enc.Utf8));
     logger.info(t);
-    return JSON.parse(t)['list'][0]['mxid'];
+    let mxid = "";
+    try {
+        mxid = JSON.parse(t)['list'][0]['mxid'];
+    }
+    catch (e) {
+        logger.error(e.message);
+        return false;
+    }
+    return mxid;
 }
 
 
@@ -113,38 +124,19 @@ async function GetCaptcha(mxid) {
     logger.info("GetCaptcha");
     const url = URL.getMovCaptcha + `&mxid=${mxid}`;
     logger.info(url);
-    let res = ""
-    try {
-        // get 请求
-        res = await got.get(url,
-            {
-                headers: {
-                    "Cookie": cg.cookie,
-                    "User-Agent": cg.agent,
-                    "zftsl": getZTF(),
-                    "Referer": "https://servicewechat.com/wx2c7f0f3c30d99445/92/page-frame.html",
-                }
-            }
-        );
-
-
-    }
-        // 捕获错误
-    catch (e) {
-        console.log(e);
-        process.exit(-1);
-    }
-    cg.cookie = res.headers["set-cookie"];
+    let res = await getRequest(url);
     logger.info(res.body);
+    cg.cookie = res.headers["set-cookie"];
+    
     if (res.body.indexOf("201") !== -1) {
         process.exit(-1);
     }
 }
 
 // 返回加密后的post 数据
-function PostData(mxid, key) {
+function PostData(mxid, key, scdate) {
     logger.info("PostData");
-    var post_data = `{"birthday":"1998-06-23","tel":"18836253270","sex":2,"cname":"余蒙佳","doctype":1,"idcard":"412828199806235466","mxid":"${mxid}","date":"${cg.scdate}","pid":"${cg.pid}","Ftime":1,"guid":""}`
+    var post_data = `{"birthday":"1998-06-23","tel":"18836253270","sex":2,"cname":"余蒙佳","doctype":1,"idcard":"412828199806235466","mxid":"${mxid}","date":"${scdate}","pid":"${cg.pid}","Ftime":1,"guid":""}`
    
     logger.info(post_data);
     let data = r.enc.Utf8.parse(post_data)
@@ -162,8 +154,9 @@ function PostData(mxid, key) {
 async function OrderPost(mxid, key, postData) {
     logger.info("OrderPost");
     let url = URL.submitScribe30;
+    logger.info(url);
     let res = ""
-    logger.info("new Cookie:" + cg.cookie);
+    // logger.info("new Cookie:" + cg.cookie);
     try {
         // get 请求
         res = await got.post(url,
@@ -184,60 +177,90 @@ async function OrderPost(mxid, key, postData) {
     }
         // 捕获错误
     catch (e) {
-        console.log(e);
+        console.log(e.message);
         process.exit(-1);
     }
     cg.cookie = res.headers["set-cookie"];
     logger.info(res.body);
 }
 
-
+// 验证
 async function GetOrderStatus() {
     logger.info("GetOrderStatus");
     let url = URL.getOrderStatus;
-    let res = "";
-    try {
-        // get 请求
-        res = await got.get(url,
-            {
-                headers: {
-                    "Cookie": cg.cookie,
-                    "User-Agent": cg.agent,
-                    "zftsl": getZTF(),
-                    "content-type": "application/json",
-                    "Connection": "keep-alive",
-                    "Referer": "https://servicewechat.com/wx2c7f0f3c30d99445/92/page-frame.html",
-                },
-            }
-        );
-
-    }
-        // 捕获错误
-    catch (e) {
-        console.log(e);
-        process.exit(-1);
-    }
+    logger.info(url);
+    let res = await getRequest(url);
     logger.info(res.body);
+    return res.body;
 }
 
+// 一次预约
+async function oneTasks (scdate) {
 
-async function allTasks () {
-
-    logger.info("start=======")
+    logger.info("start=======" + `${scdate}====`)
     let key = getKey();
-    let mxid = await GetCustSubscribeDateAll();
+    let mxid = await GetCustSubscribeDateDetail(scdate);
+    // mxid 不可获得
+    if (mxid === false) {
+        logger.error("mxid 不可获取！");
+        return false;
+    }
     logger.info("mxid = " + mxid);
 
 
     await GetCaptcha(mxid);
-    logger.info("mxid = " + mxid);
-    let postData = await PostData(mxid, key);
+    let postData = await PostData(mxid, key, scdate);
     logger.info("加密后：" + postData);
     await OrderPost(mxid, key, postData);
-    await GetOrderStatus();
+    let info = await GetOrderStatus();
+    if (info.indexOf("200") !== -1) {
+        logger.info("成功！")
+        return true;
+    }
+    else if (info.indexOf("300") !== -1) {
+        logger.info("已有预约！");
+        return true;
+    }
+    else {
+        logger.error("失败：" + `${scdate}`);
+        return false;
+    }
 }
 
-allTasks();
+
+async function Run(scdate) {
+    // 指定日期
+    let result = await oneTasks(scdate);
+    if (result === true) {
+        process.exit(0);
+    }
+
+    // 顺序预约
+    logger.info("顺序预约============")
+    let list = await GetCustSubscribeDateAll(cg.pid, cg.id, cg.month);
+    for (let i = 0; i < list.length; i++) {
+        let date = list[i]["date"];
+
+        // 跳过刚才的日期
+        if (date === scdate) {
+            continue;
+        }
+        logger.info("开始日期： " + `${date}`);
+        let result = await oneTasks(date);
+        // 预约到则结束循环
+        if (result === true) {
+            process.exit(0);
+        }
+    }
+}
+
+
+
+
+
+Run(cg.scdate);
+
+
 
 
 

@@ -253,9 +253,12 @@ async function Run(scdate) {
     let list = await GetCustSubscribeDateAll(cg.pid, cg.id, cg.month);
     for (let i = 0; i < list.length; i++) {
         let date = list[i]["date"];
-
         // 跳过刚才的日期
         if (date === scdate) {
+            continue;
+        }
+        if (list[i]["enable"] === false) {
+            logger.error("顺序日期：" + `${date} 已满！`);
             continue;
         }
         logger.info("开始日期： " + `${date}`);

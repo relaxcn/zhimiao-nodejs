@@ -3,6 +3,7 @@ import r from './cry.cjs'
 import URL from './url.cjs'
 import cg from './config.cjs'
 import log4js from 'log4js'
+
 var logger = log4js.getLogger();
 logger.level = 'debug';
 
@@ -63,11 +64,21 @@ async function GetCustSubscribeDateAll(pid, id, month) {
     logger.info("GetCustSubscribeDateAll(" + `${pid}, ${id}, ${month})`);
     const url = URL.getSubscribeMonth_news + `&pid=${pid}&id=${id}&month=${month}`;
     logger.info(url);
+
+    // get 请求
     let res = await getRequest(url);
+    logger.info(res.body);
+    // 如果还未开始，则一直循环 如果没有date
+    while (res.body.indexOf("date") === -1) {
+        // 延迟0.5s
+        sleep(500);
+        res = await getRequest(url);
+        logger.info(res.body);
+    }
+    //while end
+
     let res_json = JSON.parse(res.body);
-    let list = res_json["list"];
-    logger.info(JSON.stringify(list));
-    return list;
+    return res_json["list"];
 }
 
 // 获取某个日期的详细加密密文
@@ -229,12 +240,14 @@ async function oneTasks (scdate) {
 
 
 async function Run(scdate) {
-    // 指定日期
-    let result = await oneTasks(scdate);
-    if (result === true) {
-        process.exit(0);
+    // 如果知道具体日期，则执行下面单个
+    if (scdate !== "null") {
+        // 指定日期
+        let result = await oneTasks(scdate);
+        if (result === true) {
+            process.exit(0);
+        }
     }
-
     // 顺序预约
     logger.info("顺序预约============")
     let list = await GetCustSubscribeDateAll(cg.pid, cg.id, cg.month);
@@ -254,12 +267,14 @@ async function Run(scdate) {
     }
 }
 
-
+async function Test() {
+    GetCustSubscribeDateAll(51, 1921, 202203);
+}
 
 
 
 Run(cg.scdate);
-
+// Test();
 
 
 
